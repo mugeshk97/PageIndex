@@ -160,20 +160,19 @@ async def retrieve_nodes(tree, query):
     tree_for_llm = remove_fields(tree, ["text"])
 
     prompt = f"""
-You are retrieving relevant sections from a document.
+    You are given a query and the tree structure of a document.
+    You need to find all nodes that are likely to contain the answer.
 
-User Query:
-{query}
+    Query: {query}
 
-Document Structure:
-{json.dumps(tree_for_llm)}
+    Document tree structure: {json.dumps(tree_for_llm)}
 
-Return JSON:
-
-{{
- "node_list": ["0001","0005"]
-}}
-"""
+    Reply in the following JSON format:
+    {{
+    "thinking": <your reasoning about which nodes are relevant>,
+    "node_list": [node_id1, node_id2, ...]
+    }}
+    """
 
     response = await call_llm(prompt)
 
