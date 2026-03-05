@@ -2,13 +2,14 @@ import os
 import json
 import asyncio
 from azure.ai.documentintelligence import DocumentIntelligenceClient
+from azure.ai.documentintelligence.models import DocumentContentFormat
 from azure.core.credentials import AzureKeyCredential
 from azure.identity import DefaultAzureCredential
 from openai import AsyncAzureOpenAI
-
+from dotenv import load_dotenv
 from page_index_md import md_to_tree
 
-
+load_dotenv()
 # -------------------------------
 # Azure Clients
 # -------------------------------
@@ -30,7 +31,6 @@ def get_docintel_client():
 
 
 def get_openai_client():
-
     endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
     key = os.getenv("AZURE_OPENAI_KEY")
 
@@ -38,18 +38,21 @@ def get_openai_client():
         return AsyncAzureOpenAI(
             api_key=key,
             azure_endpoint=endpoint,
-            api_version="2024-02-01"
+            api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-01")
         )
 
-    else:
-        credential = DefaultAzureCredential()
+    credential = DefaultAzureCredential()
+    scope = "https://cognitiveservices.azure.com/.default"
 
-        return AsyncAzureOpenAI(
-            azure_ad_token_provider=credential,
-            azure_endpoint=endpoint,
-            api_version="2024-02-01"
-        )
+    def token_provider():
+        token = credential.get_token(scope)
+        return token.token
 
+    return AsyncAzureOpenAI(
+        azure_ad_token_provider=token_provider,
+        azure_endpoint=endpoint,
+        api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-01"),
+    )
 
 AZURE_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT")
 
@@ -66,7 +69,8 @@ def pdf_to_markdown(pdf_path, md_path):
 
         poller = client.begin_analyze_document(
             "prebuilt-layout",
-            document=f
+            body=f,
+            output_content_format=DocumentContentFormat.MARKDOWN
         )
 
     result = poller.result()
@@ -256,8 +260,8 @@ async def run_pipeline(pdf_path, query):
 
 if __name__ == "__main__":
 
-    pdf_path = "input.pdf"
+    pdf_path = r"c:\Users\KANNAMU5\Downloads\Final Assets\Final Assets\fa-11419769-fab-fabhalta-igan-patient-understanding-your-igan-digital-pi-update-3-25 - edited ISI1.pdf"
 
-    query = "What are the safety warnings?"
+    query = "Important Safety Informations"
 
     asyncio.run(run_pipeline(pdf_path, query))
