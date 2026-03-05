@@ -26,6 +26,7 @@ from azure.identity.aio import (
 
 AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
 AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-15-preview")
+AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
 
 # Create the token provider for Azure AD
 token_provider = get_bearer_token_provider(
@@ -48,11 +49,18 @@ def count_tokens(text, model=None):
 
 def ChatGPT_API_with_finish_reason(model, prompt, chat_history=None):
     max_retries = 10
-    client = openai.AzureOpenAI(
-        azure_endpoint=AZURE_OPENAI_ENDPOINT,
-        azure_ad_token_provider=token_provider,
-        api_version=AZURE_OPENAI_API_VERSION,
-    )
+    if AZURE_OPENAI_API_KEY:
+        client = openai.AzureOpenAI(
+            azure_endpoint=AZURE_OPENAI_ENDPOINT,
+            api_key=AZURE_OPENAI_API_KEY,
+            api_version=AZURE_OPENAI_API_VERSION,
+        )
+    else:
+        client = openai.AzureOpenAI(
+            azure_endpoint=AZURE_OPENAI_ENDPOINT,
+            azure_ad_token_provider=token_provider,
+            api_version=AZURE_OPENAI_API_VERSION,
+        )
     for i in range(max_retries):
         try:
             if chat_history:
@@ -83,11 +91,18 @@ def ChatGPT_API_with_finish_reason(model, prompt, chat_history=None):
 
 def ChatGPT_API(model, prompt, chat_history=None):
     max_retries = 10
-    client = openai.AzureOpenAI(
-        azure_endpoint=AZURE_OPENAI_ENDPOINT,
-        azure_ad_token_provider=token_provider,
-        api_version=AZURE_OPENAI_API_VERSION,
-    )
+    if AZURE_OPENAI_API_KEY:
+        client = openai.AzureOpenAI(
+            azure_endpoint=AZURE_OPENAI_ENDPOINT,
+            api_key=AZURE_OPENAI_API_KEY,
+            api_version=AZURE_OPENAI_API_VERSION,
+        )
+    else:
+        client = openai.AzureOpenAI(
+            azure_endpoint=AZURE_OPENAI_ENDPOINT,
+            azure_ad_token_provider=token_provider,
+            api_version=AZURE_OPENAI_API_VERSION,
+        )
     for i in range(max_retries):
         try:
             if chat_history:
@@ -118,17 +133,29 @@ async def ChatGPT_API_async(model, prompt):
     messages = [{"role": "user", "content": prompt}]
     for i in range(max_retries):
         try:
-            async with openai.AsyncAzureOpenAI(
-                azure_endpoint=AZURE_OPENAI_ENDPOINT,
-                azure_ad_token_provider=async_token_provider,
-                api_version=AZURE_OPENAI_API_VERSION,
-            ) as client:
-                response = await client.chat.completions.create(
-                    model=model,
-                    messages=messages,
-                    temperature=0,
-                )
-                return response.choices[0].message.content
+            if AZURE_OPENAI_API_KEY:
+                async with openai.AsyncAzureOpenAI(
+                    azure_endpoint=AZURE_OPENAI_ENDPOINT,
+                    api_key=AZURE_OPENAI_API_KEY,
+                    api_version=AZURE_OPENAI_API_VERSION,
+                ) as client:
+                    response = await client.chat.completions.create(
+                        model=model,
+                        messages=messages,
+                        temperature=0,
+                    )
+            else:
+                async with openai.AsyncAzureOpenAI(
+                    azure_endpoint=AZURE_OPENAI_ENDPOINT,
+                    azure_ad_token_provider=async_token_provider,
+                    api_version=AZURE_OPENAI_API_VERSION,
+                ) as client:
+                    response = await client.chat.completions.create(
+                        model=model,
+                        messages=messages,
+                        temperature=0,
+                    )
+            return response.choices[0].message.content
         except Exception as e:
             print("************* Retrying *************")
             logging.error(f"Error: {e}")
