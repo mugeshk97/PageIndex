@@ -1,7 +1,0 @@
-openai
-azure-identity
-pymupdf
-PyPDF2
-python-dotenv
-tiktoken
-pyyaml
