@@ -9,6 +9,7 @@ from azure.identity import DefaultAzureCredential
 from openai import AsyncAzureOpenAI
 from dotenv import load_dotenv
 from page_index_md import md_to_tree
+from utils import highlight_extracted_sections
 
 load_dotenv()
 # -------------------------------
@@ -373,6 +374,11 @@ async def run_pipeline(pdf_path, query):
 
     # Step 5: Extract Sections
     sections = extract_sections(node_ids, node_mapping)
+
+    # Step 6: Highlight extracted sections in original PDF for verification
+    if sections:
+        highlighted_pdf = highlight_extracted_sections(pdf_path, sections)
+        print(f"\n✓ Verification PDF created: {highlighted_pdf}\n")
 
     print("\nRetrieved Sections:\n")
 

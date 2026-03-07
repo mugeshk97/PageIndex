@@ -795,3 +795,136 @@ class ConfigLoader:
         self._validate_keys(user_dict)
         merged = {**self._default_dict, **user_dict}
         return config(**merged)
+
+
+# ===============================
+# PDF Highlighting for Verification
+# ===============================
+
+def _strip_markdown_syntax(text):
+    """
+    Strip markdown syntax from text to match PDF's rendered format.
+    Removes: headers (#, ##, etc.), bold (**), italic (*), code (`)
+    Preserves: paragraph structure and actual content
+    """
+    if not text:
+        return text
+    
+    # Remove markdown headers (# ## ### etc)
+    text = re.sub(r'^#+\s+', '', text, flags=re.MULTILINE)
+    
+    # Remove bold syntax (**text** or __text__)
+    text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
+    text = re.sub(r'__(.+?)__', r'\1', text)
+    
+    # Remove italic syntax (*text* or _text_)
+    text = re.sub(r'\*(.+?)\*', r'\1', text)
+    text = re.sub(r'_(.+?)_', r'\1', text)
+    
+    # Remove inline code (backticks)
+    text = re.sub(r'`(.+?)`', r'\1', text)
+    
+    # Remove code blocks (triple backticks)
+    text = re.sub(r'```[\s\S]*?```', '', text)
+    
+    # Remove markdown links [text](url) -> text
+    text = re.sub(r'\[(.+?)\]\(.+?\)', r'\1', text)
+    
+    # Remove markdown images ![alt](url)
+    text = re.sub(r'!\[(.+?)\]\(.+?\)', r'\1', text)
+    
+    # Remove horizontal rules (---, ***, ___)
+    text = re.sub(r'\n(-{3,}|\*{3,}|_{3,})\n', '\n', text)
+    
+    # Remove list markers (-, *, +, or numbers)
+    text = re.sub(r'^\s*[-*+]\s+', '', text, flags=re.MULTILINE)
+    text = re.sub(r'^\s*\d+\.\s+', '', text, flags=re.MULTILINE)
+    
+    # Clean up extra whitespace
+    text = re.sub(r'\n\n+', '\n', text)
+    text = text.strip()
+    
+    return text
+
+
+def highlight_extracted_sections(pdf_path, sections, output_path=None, color=(1, 1, 0)):
+    """
+    Highlight extracted sections in the original PDF for visual verification.
+    
+    Args:
+        pdf_path (str): Path to the original PDF file
+        sections (list): List of dicts with keys: "node_id", "title", "text"
+                        (output from extract_sections)
+        output_path (str): Path to save the annotated PDF. If None, uses 
+                          "{pdf_stem}_highlighted.pdf"
+        color (tuple): RGB tuple for highlight color (default: yellow = (1, 1, 0))
+                      Red = (1, 0, 0), Green = (0, 1, 0), Blue = (0, 0, 1)
+    
+    Returns:
+        str: Path to the created highlighted PDF
+    """
+    if output_path is None:
+        pdf_stem = Path(pdf_path).stem
+        output_path = Path(pdf_path).parent / f"{pdf_stem}_highlighted.pdf"
+    
+    doc = pymupdf.open(pdf_path)
+    
+    highlights_count = 0
+    
+    for section in sections:
+        text = section.get("text", "").strip()
+        title = section.get("title", "")
+        node_id = section.get("node_id", "")
+        
+        if not text:
+            logging.warning(f"Section {node_id} ({title}) has no text, skipping")
+            continue
+        
+        # Strip markdown syntax to match PDF's rendered format
+        search_text = _strip_markdown_syntax(text)
+        found_count = 0
+        
+        # First attempt: search for full text (no markdown syntax)
+        for page_num in range(len(doc)):
+            page = doc[page_num]
+            
+            # Search for the section text on this page
+            rects = page.search_for(search_text)
+            
+            if rects:
+                for rect in rects:
+                    highlight = page.add_highlight_annot(rect)
+                    highlight.set_colors({"stroke": color, "fill": color})
+                    highlight.update()
+                    found_count += 1
+                    highlights_count += 1
+        
+        # Fallback: if full text not found, try searching for title (also stripped of markdown)
+        if found_count == 0 and title:
+            fallback_search = _strip_markdown_syntax(title)
+            for page_num in range(len(doc)):
+                page = doc[page_num]
+                rects = page.search_for(fallback_search, flags=pymupdf.TEXT_PRESERVE_WHITESPACE)
+                if rects:
+                    for rect in rects:
+                        highlight = page.add_highlight_annot(rect)
+                        highlight.set_colors({"stroke": color, "fill": color})
+                        highlight.update()
+                        found_count += 1
+                        highlights_count += 1
+        
+        if found_count == 0:
+            logging.warning(
+                f"Could not locate text for section {node_id} ({title}) in PDF. "
+                f"Text preview: {search_text[:100]}..."
+            )
+        else:
+            logging.info(f"Highlighted {found_count} occurrence(s) of section {node_id} ({title})")
+    
+    doc.save(output_path)
+    doc.close()
+    
+    logging.info(f"PDF highlighting complete: {highlights_count} annotations added to {output_path}")
+    print(f"✓ Highlighted PDF saved: {output_path}")
+    
+    return str(output_path)
