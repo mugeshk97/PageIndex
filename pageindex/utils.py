@@ -876,35 +876,48 @@ def highlight_extracted_sections(pdf_path, sections, output_path=None, color=(1,
         title = section.get("title", "")
         node_id = section.get("node_id", "")
         
-        if not text:
-            logging.warning(f"Section {node_id} ({title}) has no text, skipping")
+        if not text and not title:
+            logging.warning(f"Section {node_id} has neither title nor text, skipping")
             continue
         
-        # Strip markdown syntax to match PDF's rendered format
-        search_text = _strip_markdown_syntax(text)
+        # Prepare search strings: both title and text so we cover the entire node
+        stripped_title = _strip_markdown_syntax(title) if title else ""
+        stripped_text = _strip_markdown_syntax(text) if text else ""
+        combined = "\n".join([s for s in (stripped_title, stripped_text) if s])
+        
         found_count = 0
         
-        # First attempt: search for full text (no markdown syntax)
-        for page_num in range(len(doc)):
-            page = doc[page_num]
-            
-            # Search for the section text on this page
-            rects = page.search_for(search_text)
-            
-            if rects:
-                for rect in rects:
-                    highlight = page.add_highlight_annot(rect)
-                    highlight.set_colors({"stroke": color, "fill": color})
-                    highlight.update()
-                    found_count += 1
-                    highlights_count += 1
-        
-        # Fallback: if full text not found, try searching for title (also stripped of markdown)
-        if found_count == 0 and title:
-            fallback_search = _strip_markdown_syntax(title)
+        # Search for the combined content first (it may capture title + body)
+        if combined:
             for page_num in range(len(doc)):
                 page = doc[page_num]
-                rects = page.search_for(fallback_search, flags=pymupdf.TEXT_PRESERVE_WHITESPACE)
+                rects = page.search_for(combined)
+                if rects:
+                    for rect in rects:
+                        highlight = page.add_highlight_annot(rect)
+                        highlight.set_colors({"stroke": color, "fill": color})
+                        highlight.update()
+                        found_count += 1
+                        highlights_count += 1
+        
+        # Always attempt to separately highlight title and text as well
+        # (handles cases where they are not contiguous in the PDF)
+        if stripped_title:
+            for page_num in range(len(doc)):
+                page = doc[page_num]
+                rects = page.search_for(stripped_title, flags=pymupdf.TEXT_PRESERVE_WHITESPACE)
+                if rects:
+                    for rect in rects:
+                        highlight = page.add_highlight_annot(rect)
+                        highlight.set_colors({"stroke": color, "fill": color})
+                        highlight.update()
+                        found_count += 1
+                        highlights_count += 1
+        
+        if stripped_text:
+            for page_num in range(len(doc)):
+                page = doc[page_num]
+                rects = page.search_for(stripped_text)
                 if rects:
                     for rect in rects:
                         highlight = page.add_highlight_annot(rect)
@@ -915,11 +928,11 @@ def highlight_extracted_sections(pdf_path, sections, output_path=None, color=(1,
         
         if found_count == 0:
             logging.warning(
-                f"Could not locate text for section {node_id} ({title}) in PDF. "
-                f"Text preview: {search_text[:100]}..."
+                f"Could not locate any content for node {node_id} ({title}) in PDF. "
+                f"Preview: {combined[:100]}..."
             )
         else:
-            logging.info(f"Highlighted {found_count} occurrence(s) of section {node_id} ({title})")
+            logging.info(f"Highlighted {found_count} occurrence(s) of node {node_id} ({title})")
     
     doc.save(output_path)
     doc.close()

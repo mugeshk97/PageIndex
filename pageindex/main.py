@@ -8,8 +8,8 @@ from azure.core.credentials import AzureKeyCredential
 from azure.identity import DefaultAzureCredential
 from openai import AsyncAzureOpenAI
 from dotenv import load_dotenv
-from page_index_md import md_to_tree
-from utils import highlight_extracted_sections
+from pageindex.page_index_md import md_to_tree
+from pageindex.utils import highlight_extracted_sections
 
 load_dotenv()
 # -------------------------------
@@ -18,8 +18,8 @@ load_dotenv()
 
 def get_docintel_client():
 
-    endpoint = os.getenv("AZURE_DOC_INTEL_ENDPOINT")
-    key = os.getenv("AZURE_DOC_INTEL_KEY")
+    endpoint = os.getenv("AZURE_DOC_INTEL_ENDPOINT") or os.getenv("AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT")
+    key = os.getenv("AZURE_DOC_INTEL_KEY") or os.getenv("AZURE_DOCUMENT_INTELLIGENCE_KEY")
 
     if key:
         credential = AzureKeyCredential(key)
@@ -34,13 +34,14 @@ def get_docintel_client():
 
 def get_openai_client():
     endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
-    key = os.getenv("AZURE_OPENAI_KEY")
+    # Try both key names for compatibility
+    key = os.getenv("AZURE_OPENAI_KEY") or os.getenv("AZURE_OPENAI_API_KEY")
 
     if key:
         return AsyncAzureOpenAI(
             api_key=key,
             azure_endpoint=endpoint,
-            api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-01")
+            api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-15-preview")
         )
 
     credential = DefaultAzureCredential()
@@ -53,7 +54,7 @@ def get_openai_client():
     return AsyncAzureOpenAI(
         azure_ad_token_provider=token_provider,
         azure_endpoint=endpoint,
-        api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-01"),
+        api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-15-preview"),
     )
 
 AZURE_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT")
@@ -88,16 +89,24 @@ def pdf_to_markdown(pdf_path, md_path):
 # -------------------------------
 
 async def call_llm(prompt):
+    if not AZURE_DEPLOYMENT:
+        raise ValueError("AZURE_OPENAI_DEPLOYMENT environment variable not set")
 
     client = get_openai_client()
 
-    response = await client.chat.completions.create(
-        model=AZURE_DEPLOYMENT,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0
-    )
-
-    return response.choices[0].message.content.strip()
+    try:
+        response = await client.chat.completions.create(
+            model=AZURE_DEPLOYMENT,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0
+        )
+        content = response.choices[0].message.content
+        if content is None:
+            raise ValueError("LLM returned empty response")
+        return content.strip()
+    except Exception as e:
+        print(f"[ERROR] LLM call failed: {str(e)}")
+        raise
 
 
 # -------------------------------
@@ -187,6 +196,8 @@ def keyword_match_nodes(node_mapping, query):
 # -------------------------------
 
 def _strip_json_fences(text):
+    if text is None:
+        raise ValueError("Cannot strip JSON fences from None")
     text = text.strip()
     if text.startswith("```"):
         text = re.sub(r'^```[a-z]*\n?', '', text)
@@ -385,6 +396,8 @@ async def run_pipeline(pdf_path, query):
     for s in sections:
         print("----", s["title"])
         print(s["text"])
+
+    return sections
 
 
 # -------------------------------

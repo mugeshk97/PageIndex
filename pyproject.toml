@@ -13,5 +13,6 @@ dependencies = [
     "pypdf2>=3.0.1",
     "python-dotenv>=1.2.2",
     "pyyaml>=6.0.3",
+    "streamlit>=1.40.0",
     "tiktoken>=0.12.0",
 ]
